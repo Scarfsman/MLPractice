@@ -69,7 +69,7 @@ cols = train_df.columns
 train_df = pd.DataFrame(imputer.transform(train_df), columns = cols)
 
 #using the DecisionTreeRegressor
-x = train_df[['Sex', 'Age', 'Fare']]
+x = train_df[['Sex', 'Age2', 'Fare']]
 y = train_df['Survived']
 
 tree_cla = DecisionTreeClassifier()
@@ -102,7 +102,7 @@ final_rmse = np.sqrt(final_mse)
 
 addCols(test_df)
 replaceMissing(test_df, tree_reg)
-x = test_df[['Sex', 'Age', 'Fare']]
+x = test_df[['Sex', 'Age2', 'Fare']]
 imputer.fit(x)
 cols = x.columns
 x = pd.DataFrame(imputer.transform(x), columns = cols)
