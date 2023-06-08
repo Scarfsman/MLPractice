@@ -11,6 +11,7 @@ from sklearn.tree import DecisionTreeClassifier
 from sklearn.tree import DecisionTreeRegressor
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import mean_squared_error
+from sklearn.linear_model import SGDClassifier
 from sklearn.impute import SimpleImputer
 from sklearn.model_selection import GridSearchCV
 import matplotlib.pyplot as plt
@@ -43,7 +44,39 @@ def addCols(df):
     parent = [int(df['Parch'][i] > 2) for i in range(len(df['Name']))]
     df['Master'] = mastercheck
     df['Parent'] = parent    
+    
+def trainModel(func, x_test, y_test):
 
+
+    
+    param_grid = [
+        {'class_weight' : [{1:0.5, 0:0.5}, 
+                         {1:0.4, 0:0.6}, 
+                         {1:0.6, 0:0.4},
+                         {1:0.7, 0:0.3}],
+         'alpha' : [0.0001, 
+                  0.001,
+                  0.01, 
+                  0.1, 
+                  1,
+                  10, 
+                  100, 
+                  1000] }
+        ]
+    
+    grid_search = GridSearchCV(func, param_grid, cv = 5, 
+                               scoring = 'neg_mean_squared_error',
+                               return_train_score = True)
+    grid_search.fit(x, y)
+    return grid_search
+    
+def makePredictions(func, x):
+    survival_predictions = func.best_estimator_.predict(x)
+    survival_predictions = survival_predictions.astype(int)
+
+    output = pd.DataFrame({'PassengerId': test_df.PassengerId, 'Survived': survival_predictions})
+    output.to_csv('submission.csv', index=False)
+    
 np.random.seed(42)
 
 train_df = pd.read_csv('train.csv')
@@ -67,51 +100,21 @@ imputer = SimpleImputer(strategy = 'median')
 imputer.fit(train_df)
 cols = train_df.columns
 train_df = pd.DataFrame(imputer.transform(train_df), columns = cols)
+addCols(test_df)
+replaceMissing(test_df, tree_reg)
+x_test = test_df[['Sex', 'Age2', 'Fare']]
+imputer.fit(x_test)
+cols = x_test.columns
+x_test = pd.DataFrame(imputer.transform(x_test), columns = cols)
 
 #using the DecisionTreeRegressor
 x = train_df[['Sex', 'Age2', 'Fare']]
 y = train_df['Survived']
 
-tree_cla = DecisionTreeClassifier()
-tree_cla.fit(x, y)
+final_model = trainModel(SGDClassifier(), x, y)
+makePredictions(final_model, x_test)
 
-forr_cla = RandomForestClassifier()
-forr_cla.fit(x, y)
 
-survival_predictions = tree_cla.predict(x)
-tree_mse  = mean_squared_error(y, survival_predictions)
-tree_rmse = np.sqrt(tree_mse)
-
-param_grid = [{'n_estimators': [3, 10, 30], 
-               'max_features': [2, 4, 6, 8]},
-              
-              {'bootstrap' : [False], 
-              'n_estimators': [3, 10], 
-              'max_features': [4, 8]}]
-
-grid_search = GridSearchCV(forr_cla, param_grid, cv = 5,
-                           scoring = 'neg_mean_squared_error',
-                           return_train_score = True)
-
-grid_search.fit(x, y)
-
-final_model = grid_search.best_estimator_
-final_pred = final_model.predict(x)
-final_mse = mean_squared_error(y, final_pred)
-final_rmse = np.sqrt(final_mse)
-
-addCols(test_df)
-replaceMissing(test_df, tree_reg)
-x = test_df[['Sex', 'Age2', 'Fare']]
-imputer.fit(x)
-cols = x.columns
-x = pd.DataFrame(imputer.transform(x), columns = cols)
-
-survival_predictions = final_model.predict(x)
-survival_predictions = survival_predictions.astype(int)
-
-output = pd.DataFrame({'PassengerId': test_df.PassengerId, 'Survived': survival_predictions})
-output.to_csv('submission.csv', index=False)
 
 
 
