@@ -11,13 +11,16 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import os
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.ensemble import BaggingClassifier
 from sklearn.impute import SimpleImputer
 from sklearn.linear_model import SGDClassifier
 from sklearn.metrics import precision_recall_curve
 from sklearn.metrics import roc_curve
-from sklearn.model_selection import cross_val_score
 from sklearn.model_selection import cross_val_predict
+from sklearn.model_selection import cross_val_score
+from sklearn.model_selection import GridSearchCV
 from sklearn.tree import DecisionTreeRegressor
+from sklearn.tree import DecisionTreeClassifier
 
 def plotVals(df, y):
     fig, ax = plt.subplots()
@@ -64,15 +67,19 @@ def addAge(df, Model, cols):
     df['Age'] = imputer.transform(df['Age'].values.reshape(-1, 1))
     return df
 
-def trainOnSurvived(X_train, y_train, Model):
-    Model.fit(X_train, y_train)
+def trainOnSurvived(X_train, y_train, Model, param_grid):
+    grid_search = GridSearchCV(Model, param_grid, cv = 5,
+                               scoring = 'roc_auc')
+    grid_search.fit(X_train, y_train)
+    return grid_search.best_estimator_
     
 def predictSurvived(X, Model, y = [], method = '', ax = ''):
     if len(y) > 0:
         Model.predict(X)
         cvs = cross_val_score(Model, X, y, cv = 5, scoring = 'accuracy')
         print("Results for the Survived Model Fitting")
-        print("Accuracy: {}%".format(round(cvs.mean(), 2)))
+        print("Accuracy: {}%".format(round(cvs.mean(), 5)))
+        
         cvs_pred = cross_val_predict(Model, X, y, cv = 5, 
                                      method = method)
         #plot roc_curv
@@ -88,7 +95,6 @@ def predictSurvived(X, Model, y = [], method = '', ax = ''):
             forest_scores = cvs_pred[:, 1]
             fpr, tpr, thresholds = roc_curve(y, forest_scores)
             ax.plot(fpr, tpr, label = str(Model))
-
 
     else:
         Model.predict(X)
@@ -109,8 +115,7 @@ def saveChangesToRepo():
     os.system('cmd /c "git add ."')
     os.system('cmd /c "git commit -m "Making changes to Titanic"')
     os.system('cmd /c "git push"')
-              
-    
+                
 
 #Cleaning data before training model
 train_df = pd.read_csv('train.csv')
@@ -124,22 +129,28 @@ addAge(train_df, DTR, ageCols)
 cols = ['Parch', 'Pclass', 'SibSp', 'Sex']
 X_train = train_df[cols]
 y_train = train_df['Survived']
-
 fig, ax = plt.subplots()
-SGD = SGDClassifier(random_state = 42)
-trainOnSurvived(X_train, y_train, SGD)
-predictSurvived(X_train, SGD, y_train, method='decision_function', ax = ax)
 
 RFC = RandomForestClassifier(random_state = 42)
-trainOnSurvived(X_train, y_train, RFC)
+param_grid = [{'n_estimators' : [100, 200], 
+               'criterion' : ['gini', 'entropy'],
+               'bootstrap' : [True]}]
+RFC = trainOnSurvived(X_train, y_train, RFC, param_grid)
 predictSurvived(X_train, RFC, y_train, method = 'predict_proba', ax = ax)
-plt.legend()
+
+param_grid = [{'n_estimators' : [500, 1000],
+               'max_samples' : [100],
+               'bootstrap' : [True],
+               'n_jobs' : [-1]}]
+bag_clf = BaggingClassifier(DecisionTreeClassifier(random_state = 42))
+bag_clf = trainOnSurvived(X_train, y_train, bag_clf, param_grid)
+predictSurvived(X_train, bag_clf, y_train, method = 'predict_proba', ax = ax)
 
 #Make Predicitions based on test data
 
-makePredictions(pd.read_csv('test.csv'), cols, RFC)
+#makePredictions(pd.read_csv('test.csv'), cols, bag_clf)
 
-
+saveChangesToRepo()
 
 
 
