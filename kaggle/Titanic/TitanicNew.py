@@ -9,14 +9,19 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
-from pandas.plotting import scatter_matrix
-from sklearn.metrics import precision_recall_curve
-from sklearn.tree import DecisionTreeRegressor
+import os
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.impute import SimpleImputer
 from sklearn.linear_model import SGDClassifier
+from sklearn.metrics import precision_recall_curve
+from sklearn.metrics import roc_curve
 from sklearn.model_selection import cross_val_score
+from sklearn.model_selection import cross_val_predict
+from sklearn.tree import DecisionTreeRegressor
 
-train_df = pd.read_csv('train.csv')
-test_df = pd.read_csv('test.csv')
+def plotVals(df, y):
+    fig, ax = plt.subplots()
+    sns.boxplot(data = df, y = y, x = 'Survived', hue = 'Sex')
 
 def cleanDf(df):
     """Preprocessing step"""
@@ -35,8 +40,9 @@ def trainOnAge(df, Model, cols):
                              scoring = "neg_mean_squared_error",
                              cv = 10)
     tree_rmse_scores = np.sqrt(-scores)
+    print("Results for the Age Regressor")
     print("Mean Score: {}".format(tree_rmse_scores.mean()))
-    print("Standard Deviation: {}".format(tree_rmse_scores.std()))
+    print("Standard Deviation: {} \n".format(tree_rmse_scores.std()))
     
 def addAge(df, Model, cols):
     """Adds values to the age column if they are missing by making
@@ -51,19 +57,92 @@ def addAge(df, Model, cols):
                 dataDict[col] = df[col].iloc[i]
             data = pd.DataFrame(dataDict,index = [0])
             temp.append(int(Model.predict(data)))
-    df['Age'] = temp
+    df['Age2'] = temp
+    
+    imputer = SimpleImputer(strategy = 'median')
+    imputer.fit(df['Age'].values.reshape(-1, 1))
+    df['Age'] = imputer.transform(df['Age'].values.reshape(-1, 1))
     return df
 
-def trainOnSurvived():
+def trainOnSurvived(X_train, y_train, Model):
+    Model.fit(X_train, y_train)
+    
+def predictSurvived(X, Model, y = [], method = '', ax = ''):
+    if len(y) > 0:
+        Model.predict(X)
+        cvs = cross_val_score(Model, X, y, cv = 5, scoring = 'accuracy')
+        print("Results for the Survived Model Fitting")
+        print("Accuracy: {}%".format(round(cvs.mean(), 2)))
+        cvs_pred = cross_val_predict(Model, X, y, cv = 5, 
+                                     method = method)
+        #plot roc_curv
+        #set up graph
+        ax.plot([0,1], [0,1], 'k--')
+        plt.title('ROC Curve')
+        plt.xlabel('False Positive Rate')
+        plt.ylabel('True Positive Rate')
+        if method == 'decision_function':
+            fpr, tpr, thresholds = roc_curve(y, cvs_pred)
+            ax.plot(fpr, tpr, label = str(Model))
+        elif method == 'predict_proba':
+            forest_scores = cvs_pred[:, 1]
+            fpr, tpr, thresholds = roc_curve(y, forest_scores)
+            ax.plot(fpr, tpr, label = str(Model))
+
+
+    else:
+        Model.predict(X)
+
+def makePredictions(df, cols, Model):
+    """Make Prdictions and submit to Kaggle"""
+    df = cleanDf(df)
+    survival_predictions = Model.predict(df[cols])
+    survival_predictions = survival_predictions.astype(int)
+
+    output = pd.DataFrame({'PassengerId': df.PassengerId, 
+                           'Survived': survival_predictions})
+    output.to_csv('submission.csv', index=False)
+    os.system('cmd /k "kaggle competitions submit -c titanic -f submission.csv -m "Latest test"')
+
+def saveChangesToRepo():
+    os.system(r'cmd /c "cd C:\Users\Georg\MLPractice"')
+    os.system('cmd /c "git add ."')
+    os.system('cmd /c "git commit -m "Making changes to Titanic"')
+    os.system('cmd /c "git push"')
+              
+    
 
 #Cleaning data before training model
+train_df = pd.read_csv('train.csv')
 train_df = cleanDf(train_df)
 DTR = DecisionTreeRegressor()
-ageCols = ['Parch', 'SibSp', 'Pclass']
+ageCols = ['Parch', 'SibSp', 'Fare']
 trainOnAge(train_df, DTR, ageCols)
 addAge(train_df, DTR, ageCols)
 
 #Training Model
+cols = ['Parch', 'Pclass', 'SibSp', 'Sex']
+X_train = train_df[cols]
+y_train = train_df['Survived']
+
+fig, ax = plt.subplots()
+SGD = SGDClassifier(random_state = 42)
+trainOnSurvived(X_train, y_train, SGD)
+predictSurvived(X_train, SGD, y_train, method='decision_function', ax = ax)
+
+RFC = RandomForestClassifier(random_state = 42)
+trainOnSurvived(X_train, y_train, RFC)
+predictSurvived(X_train, RFC, y_train, method = 'predict_proba', ax = ax)
+plt.legend()
+
+#Make Predicitions based on test data
+
+makePredictions(pd.read_csv('test.csv'), cols, RFC)
+
+
+
+
+
 
 
 
